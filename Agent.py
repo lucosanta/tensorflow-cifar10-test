@@ -23,24 +23,35 @@ class Agent(object):
         self.logger = log
 
         self.logger.debug('[Agent][Constructor] '+mode.name)
-
+        self.batch_size = 200
         self.model = None
 
 
 
-    def train(self,args,keep_prob= 0.5,epochs= 1000,image_shape = (32,32,3)):
+    def train(self,args,keep_prob= 0.5,epochs= 1000,image_shape = (32,32,3), url = ''):
+
         self.logger.info('[Agent][train]')
         self.logger.info(args)
 
+
+        self.batch_size = args.batch_size
+
         # Remove previous weights, bias, inputs, etc..
         #tf.reset_default_graph()
-        queue_loader = File_loader(batch_size=args.b_size, num_epochs=args.ep)
+        data_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep , url = args.dataset_url)
+        test_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep,train=False,url = args.dataset-url)
 
-        model = CNN(args.lr, args.b_size, queue_loader.num_batches)
-        model.build(queue_loader.images)
-        model.loss(queue_loader.labels)
+        model = CNN(args.lr, args.batch_size, data_loader.num_batches)
+        model_eval  = CNN(args.lr, args.batch_size, test_loader.num_batches)
+        
+        model.build(data_loader.images)
+        model_eval.build(test_loader.images)
+
+
+        model.loss(data_loader.labels)
         train_op = model.train()
-        model.accuracy(queue_loader.labels, model.logits)
+        model.accuracy(data_loader.labels, model.logits)
+        model_eval.accuracy(test_loader.labels,model_eval.logits,name='test')
 
         saver = tf.train.Saver()
         config = tf.ConfigProto()
@@ -52,7 +63,9 @@ class Agent(object):
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-        merged = tf.summary.merge_all()
+        train_summary = tf.summary.merge([model.accuracy_summary, model.loss_summary])
+        test_summary = tf.summary.merge([model_eval.accuracy_summary])
+
         train_writer = tf.summary.FileWriter('./summary/train', sess.graph)
         test_writer = tf.summary.FileWriter('./summary/test')
 
@@ -65,10 +78,10 @@ class Agent(object):
 
                 summary, loss, accuracy, _ = sess.run([merged, model.loss_op, model.accuracy_op, train_op])
 
-                print('epoch: %2d, step: %2d, loss: %.4f accuracy: %.4f' % (ep + 1, step, loss, accuracy))
+                self.logger.info('epoch: %2d, step: %2d, loss: %.4f accuracy: %.4f' % (ep + 1, step, loss, accuracy))
 
-                if step % queue_loader.num_batches == 0:
-                    print('epoch: %2d, step: %2d, loss: %.4f, epoch %2d done.' % (ep + 1, step, loss, ep + 1))
+                if step % data_loader.num_batches == 0:
+                    self.logger.info('epoch: %2d, step: %2d, loss: %.4f, epoch %2d done.' % (ep + 1, step, loss, ep + 1))
                     checkpoint_path = os.path.join('./summary/log', 'cifar.ckpt')
                     saver.save(sess, checkpoint_path, global_step=ep + 1)
                     step = 1
@@ -77,19 +90,34 @@ class Agent(object):
                 else:
                     step += 1
         except tf.errors.OutOfRangeError:
-            print('\nDone training, epoch limit: %d reached.' % (args.ep))
+            self.logger.info('\nDone training, epoch limit: %d reached.' % (args.ep))
         finally:
             coord.request_stop()
 
         coord.join(threads)
         sess.close()
-        print('Done')
+        self.logger.info('Done')
 
 
-    def eval(self):
-        self.logger.info('[Agent][eval]')
+    def evaluate_set (sess, top_k_op, num_examples):
+        """Convenience function to run evaluation for for every batch. 
+            Sum the number of correct predictions and output one precision value.
+        Args:
+            sess:          current Session
+            top_k_op:      tensor of type tf.nn.in_top_k
+            num_examples:  number of examples to evaluate
+        """
+        self.logger.info('[Agent][evaluate_set]')
+        num_iter = int(math.ceil(num_examples / self.batch_size))
+        true_count = 0  # Counts the number of correct predictions.
+        total_sample_count = num_iter * self.batch_size
 
+        for step in range(0,num_iter):
+            predictions = sess.run([top_k_op])
+            true_count += np.sum(predictions)
 
+        # Compute precision
+        return true_count / total_sample_count
 
 
     ######################################################################################
@@ -112,39 +140,3 @@ class Agent(object):
 
     def _bytes_feature(self,value):
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-
-    def train_neural_network(self,session, optimizer, keep_probability, feature_batch, label_batch):
-        """
-        Optimize the session on a batch of images and labels
-        : session: Current TensorFlow session
-        : optimizer: TensorFlow optimizer function
-        : keep_probability: keep probability
-        : feature_batch: Batch of Numpy image data
-        : label_batch: Batch of Numpy label data
-        """
-        print(feature_batch)
-        print(label_batch)
-
-
-
-    def print_stats(self,session, feature_batch, label_batch, cost, accuracy):
-        """
-        Print information about loss and validation accuracy
-        : session: Current TensorFlow session
-        : feature_batch: Batch of Numpy image data
-        : label_batch: Batch of Numpy label data
-        : cost: TensorFlow cost function
-        : accuracy: TensorFlow accuracy function
-        """
-        loss = session.run(cost, feed_dict={
-            x: feature_batch,
-            y: label_batch,
-            keep_prob: 1.})
-        valid_acc = session.run(accuracy, feed_dict={
-            x: valid_features,
-            y: valid_labels,
-            keep_prob: 1.})
-
-        print('Loss: {:>10.4f} | Validation Accuracy: {:.4f}'.format(
-            loss,
-            valid_acc))

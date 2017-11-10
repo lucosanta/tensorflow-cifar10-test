@@ -6,10 +6,11 @@ import os
 import pdb
 import glob
 import pickle
-
+import urllib
 import numpy as np
 import tensorflow as tf
-
+import sys
+import tarfile
 
 def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2, min_after_dequeue=1000):
     """
@@ -27,6 +28,8 @@ def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2
         images: (batch_size, height, width, channels)
         labels: (batch_size)
     """
+
+    
 
     def read_and_decode(filename_queue, img_shape):
         """Return a single example for queue"""
@@ -63,7 +66,7 @@ def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2
     return images, sparse_labels
 
 
-def convertToTFRecords(images, labels, num_examples, filename):
+def convertToTFRecords(images, labels, num_examples, filename, url=''):
     """
     Args:
         images: (num_examples, height, width, channels) np.int64 nparray (0~255)
@@ -72,6 +75,7 @@ def convertToTFRecords(images, labels, num_examples, filename):
         filename: the tfrecords' name to be saved
     Return: None, but store a .tfrecords file to data_log/
     """
+    self.download_dataset(url)
     rows = images.shape[1]
     cols = images.shape[2]
     depth = images.shape[3]
@@ -88,6 +92,32 @@ def convertToTFRecords(images, labels, num_examples, filename):
         }))
         writer.write(example.SerializeToString())
     writer.close()
+
+
+def download_dataset(url,dest_directory='./dataset'):
+    '''
+    Download and extract the tarball from Alex's website.
+    :param url: where to download
+    :param dest_directory: where to put the file. If not exist, it will creates a directory anmed 'dataset'
+    '''
+    if not os.path.exists(dest_directory):
+        os.makedirs(dest_directory)
+    filename = url.split('/')[-1]
+    filepath = os.path.join(dest_directory, filename)
+    if not os.path.exists(filepath):
+        def _progress(count, block_size, total_size):
+            sys.stdout.write('\r>> Downloading %s %.1f%%' % (filename,
+                                                                float(count * block_size) / float(total_size) * 100.0))
+            sys.stdout.flush()
+
+        filepath, _ = urllib.request.urlretrieve(url, filepath, _progress)
+        print()
+        statinfo = os.stat(filepath)
+        self.logger.info('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+    extracted_dir_path = os.path.join(dest_directory, 'cifar-10-batches-py')
+    if not os.path.exists(extracted_dir_path):
+        tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+ 
 
 
 def read_data_batches(train=True):
@@ -121,7 +151,7 @@ def read_data_batches(train=True):
 
 class File_loader():
     # This queue loader use cifar10 as example data
-    def __init__(self, batch_size, num_epochs, num_threads=2, min_after_dequeue=1000, train=True):
+    def __init__(self, batch_size, num_epochs, num_threads=2, url='',min_after_dequeue=1000, train=True):
         if train:
             filename = 'train.tfrecords'
         else:
@@ -130,8 +160,9 @@ class File_loader():
         # First, we are going to generate a single file which contains both training images and labels
         #  in standard tensorflow file format (TFRecords), this is simple
         if not os.path.exists(os.path.join('./dataset/cifar-10-batches-py', filename)):
+            download_dataset(url=url)
             images, labels = read_data_batches(train)
-            convertToTFRecords(images, labels, len(images), filename)
+            convertToTFRecords(images, labels, len(images), filename,url=url)
 
         print('reading here')
         img_shape = [32, 32, 3]

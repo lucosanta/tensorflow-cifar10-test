@@ -60,10 +60,10 @@ class CNN:
         self.loss_op = tf.reduce_mean(cross_entropy_loss)
         self.loss_summary = tf.summary.scalar('loss', self.loss_op)
 
-    def accuracy(self, labels, y):
+    def accuracy(self, labels, y, name='train'):
         correct_prediction = tf.equal(tf.cast(labels, tf.int64), tf.argmax(y, dimension=1))
         self.accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float64))
-        self.accuracy_summary = tf.summary.scalar('accuracy', self.accuracy_op)
+        self.accuracy_summary = tf.summary.scalar('accuracy-'+name, self.accuracy_op)
 
     def train(self):
         self.lr = tf.train.exponential_decay(self.lr, self.g_step,

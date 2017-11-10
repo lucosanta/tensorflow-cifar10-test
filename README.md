@@ -1,7 +1,7 @@
-# tensorflow-cifar10-test
+# CIFAR-10 Tensorflow Test
 A test to improve my abilities on Tensorflow
 
-
+## Actions
 In this algorithm I had to:
   * Import CIFAR-10
   * Convert dataset to TfRecord

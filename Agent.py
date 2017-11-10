@@ -1,13 +1,10 @@
 
-import argparse
 import os
-import re
-import sys
-import tarfile
 import tensorflow as tf
 
-from six.moves import urllib
-import pickle
+import math
+import numpy as np
+import time
 
 from Enumerators import Mode
 
@@ -39,19 +36,15 @@ class Agent(object):
         # Remove previous weights, bias, inputs, etc..
         #tf.reset_default_graph()
         data_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep , url = args.dataset_url)
-        test_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep,train=False,url = args.dataset-url)
+        test_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep,train=False,url = args.dataset_url)
 
         model = CNN(args.lr, args.batch_size, data_loader.num_batches)
-        model_eval  = CNN(args.lr, args.batch_size, test_loader.num_batches)
-        
+
         model.build(data_loader.images)
-        model_eval.build(test_loader.images)
-
-
         model.loss(data_loader.labels)
+
         train_op = model.train()
         model.accuracy(data_loader.labels, model.logits)
-        model_eval.accuracy(test_loader.labels,model_eval.logits,name='test')
 
         saver = tf.train.Saver()
         config = tf.ConfigProto()
@@ -64,7 +57,6 @@ class Agent(object):
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
         train_summary = tf.summary.merge([model.accuracy_summary, model.loss_summary])
-        test_summary = tf.summary.merge([model_eval.accuracy_summary])
 
         train_writer = tf.summary.FileWriter('./summary/train', sess.graph)
         test_writer = tf.summary.FileWriter('./summary/test')
@@ -76,7 +68,7 @@ class Agent(object):
                 #run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 #run_metadata = tf.RunMetadata()
 
-                summary, loss, accuracy, _ = sess.run([merged, model.loss_op, model.accuracy_op, train_op])
+                train_summary, loss, accuracy, _ = sess.run([train_summary, model.loss_op, model.accuracy_op, train_op])
 
                 self.logger.info('epoch: %2d, step: %2d, loss: %.4f accuracy: %.4f' % (ep + 1, step, loss, accuracy))
 
@@ -85,7 +77,7 @@ class Agent(object):
                     checkpoint_path = os.path.join('./summary/log', 'cifar.ckpt')
                     saver.save(sess, checkpoint_path, global_step=ep + 1)
                     step = 1
-                    train_writer.add_summary(summary, ep)
+                    train_writer.add_summary(train_summary, ep)
                     ep += 1
                 else:
                     step += 1
@@ -99,25 +91,52 @@ class Agent(object):
         self.logger.info('Done')
 
 
-    def evaluate_set (sess, top_k_op, num_examples):
-        """Convenience function to run evaluation for for every batch. 
-            Sum the number of correct predictions and output one precision value.
+    def evaluate_model(self,sess, model, global_step, summary_writer, summary_op):
+        """Computes perplexity-per-word over the evaluation dataset.
+        Summaries and perplexity-per-word are written out to the eval directory.
         Args:
-            sess:          current Session
-            top_k_op:      tensor of type tf.nn.in_top_k
-            num_examples:  number of examples to evaluate
+          sess: Session object.
+          model: Instance of ShowAndTellModel; the model to evaluate.
+          global_step: Integer; global step of the model checkpoint.
+          summary_writer: Instance of FileWriter.
+          summary_op: Op for generating model summaries.
         """
-        self.logger.info('[Agent][evaluate_set]')
-        num_iter = int(math.ceil(num_examples / self.batch_size))
-        true_count = 0  # Counts the number of correct predictions.
-        total_sample_count = num_iter * self.batch_size
+        # Log model summaries on a single batch.
+        #summary_str = sess.run(summary_op)
+        #summary_writer.add_summary(summary_str, global_step)
 
-        for step in range(0,num_iter):
-            predictions = sess.run([top_k_op])
-            true_count += np.sum(predictions)
+        # Compute perplexity over the entire dataset.
+        num_eval_batches = int(math.ceil(10132 / self.batch_size))
 
-        # Compute precision
-        return true_count / total_sample_count
+        start_time = time.time()
+        sum_losses = 0.
+        sum_weights = 0.
+        for i in range(0,num_eval_batches):
+            accuracy, summary = sess.run([
+                model.accuracy_op,
+                model.accuracy_summary
+            ])
+            #sum_losses += np.sum(cross_entropy_losses * weights)
+            #sum_weights += np.sum(weights)
+            if not i % 100:
+                tf.logging.info("Computed losses for %d of %d batches.", i + 1,
+                                num_eval_batches)
+        eval_time = time.time() - start_time
+
+        perplexity = math.exp(sum_losses / sum_weights)
+        tf.logging.info("Perplexity = %f (%.2g sec)", perplexity, eval_time)
+
+        # Log perplexity to the FileWriter.
+        summary = tf.Summary()
+        value = summary.value.add()
+        value.simple_value = perplexity
+        value.tag = "Perplexity"
+        summary_writer.add_summary(summary, global_step)
+
+        # Write the Events file to the eval directory.
+        #summary_writer.flush()
+        tf.logging.info("Finished processing evaluation at global step %d.",
+                        global_step)
 
 
     ######################################################################################

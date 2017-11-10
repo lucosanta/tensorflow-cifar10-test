@@ -75,7 +75,6 @@ def convertToTFRecords(images, labels, num_examples, filename, url=''):
         filename: the tfrecords' name to be saved
     Return: None, but store a .tfrecords file to data_log/
     """
-    self.download_dataset(url)
     rows = images.shape[1]
     cols = images.shape[2]
     depth = images.shape[3]
@@ -113,7 +112,7 @@ def download_dataset(url,dest_directory='./dataset'):
         filepath, _ = urllib.request.urlretrieve(url, filepath, _progress)
         print()
         statinfo = os.stat(filepath)
-        self.logger.info('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+        print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
     extracted_dir_path = os.path.join(dest_directory, 'cifar-10-batches-py')
     if not os.path.exists(extracted_dir_path):
         tarfile.open(filepath, 'r:gz').extractall(dest_directory)
@@ -137,7 +136,7 @@ def read_data_batches(train=True):
         batches = [pickle.load(open('./dataset/cifar-10-batches-py/data_batch_' + str(b + 1),mode='rb'), encoding='latin-1') for b in range(0,5)]
     else:
         print('Reading test batch')
-        batches = [pickle.load(open('./dataset/cifar-10-batches-py/test_batch', mode='rb'), encoding='bytes')]
+        batches = [pickle.load(open('./dataset/cifar-10-batches-py/test_batch', mode='rb'), encoding='latin-1')]
 
     images = np.zeros((50000, 32, 32, 3), dtype=np.uint8) if train else np.zeros((10000, 32, 32, 3), dtype=np.uint8)
     labels = np.zeros((50000), dtype=np.int32) if train else np.zeros((10000), dtype=np.int32)

@@ -12,7 +12,7 @@ import tensorflow as tf
 import sys
 import tarfile
 
-def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2, min_after_dequeue=1000):
+def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2, min_after_dequeue=1000,augment=False):
     """
     Args:
         filename: the .tfrecords file we are going to load
@@ -28,6 +28,8 @@ def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2
         images: (batch_size, height, width, channels)
         labels: (batch_size)
     """
+
+
 
     
 
@@ -56,14 +58,68 @@ def readFromTFRecords(filename, batch_size, num_epochs, img_shape, num_threads=2
 
     image, sparse_label = read_and_decode(filename_queue, img_shape)  # share filename_queue with multiple threads
 
-    # tf.train.shuffle_batch internally uses a RandomShuffleQueue
-    images, sparse_labels = tf.train.shuffle_batch(
-        [image, sparse_label], batch_size=batch_size, num_threads=num_threads,
-        min_after_dequeue=min_after_dequeue,
-        capacity=min_after_dequeue + (num_threads + 1) * batch_size
-    )
 
-    return images, sparse_labels
+
+    if (augment):
+        # Randomly crop a [height, width] section of the image.
+        distorted_image = tf.random_crop(image, [img_shape[0], img_shape[1], 3])
+
+        # Randomly flip the image horizontally.
+        distorted_image = tf.image.random_flip_left_right(distorted_image)
+
+        distorted_image = tf.image.random_brightness(distorted_image,
+                                                     max_delta=20)
+        image = tf.image.random_contrast(distorted_image,
+                                                   lower=0.5, upper=1.8)
+
+    # tf.train.shuffle_batch internally uses a RandomShuffleQueue
+    images, sparse_labels = generate_batch(image,sparse_label,min_after_dequeue,batch_size,True)
+
+    #     tf.train.shuffle_batch(
+    #     [image, sparse_label], batch_size=batch_size, num_threads=num_threads,
+    #     min_after_dequeue=min_after_dequeue,
+    #     capacity=min_after_dequeue + (num_threads + 1) * batch_size
+    # )
+
+
+    image_summary= tf.summary.image('images', images)
+
+    return images, sparse_labels,image_summary
+
+
+def generate_batch(image, label, min_queue_examples, batch_size, shuffle):
+    """Construct a batch of images and labels.
+    Args:
+      image: 3-D Tensor of [height, width, 3] of type.float32.
+      label: 1-D Tensor of type.int32
+      min_queue_examples: int32, minimum number of samples to retain
+        in the queue that provides of batches of examples.
+      batch_size: Number of images per batch.
+      shuffle: boolean indicating whether to use a shuffling queue.
+    Returns:
+      images: Images. 4D tensor of [batch_size, height, width, 3] size.
+      labels: Labels. 1D tensor of [batch_size] size.
+    """
+    # Create a queue that shuffles the examples, and then
+    # read 'batch_size' images + labels from the example queue.
+    num_preprocess_threads = 16
+    if shuffle:
+        images, label_batch = tf.train.shuffle_batch(
+            [image, label],
+            batch_size=batch_size,
+            num_threads=num_preprocess_threads,
+            capacity=min_queue_examples + 3 * batch_size,
+            min_after_dequeue=min_queue_examples)
+    else:
+        images, label_batch = tf.train.batch(
+            [image, label],
+            batch_size=batch_size,
+            num_threads=num_preprocess_threads,
+            capacity=min_queue_examples + 3 * batch_size)
+
+    # Display the training images in the visualizer.
+
+    return images, tf.reshape(label_batch, [batch_size])
 
 
 def convertToTFRecords(images, labels, num_examples, filename, url=''):
@@ -150,7 +206,8 @@ def read_data_batches(train=True):
 
 class File_loader():
     # This queue loader use cifar10 as example data
-    def __init__(self, batch_size, num_epochs, num_threads=2, url='',min_after_dequeue=1000, train=True):
+    def __init__(self, batch_size, num_epochs, num_threads=2, url='',min_after_dequeue=1000, train=True, augment=False):
+        print('File_loader ',train)
         if train:
             filename = 'train.tfrecords'
         else:
@@ -163,14 +220,15 @@ class File_loader():
             images, labels = read_data_batches(train)
             convertToTFRecords(images, labels, len(images), filename,url=url)
 
-        print('reading here')
+
         img_shape = [32, 32, 3]
         self.num_examples = 50000 if train else 10000
         # the above 2 lines are set manually assuming we have already generated .tfrecords file
         self.num_batches = int(self.num_examples / batch_size)
 
         # Second, we are going to read from .tfrecords file, this contains several steps
-        self.images, self.labels = readFromTFRecords(os.path.join('./dataset/cifar-10-batches-py', filename), batch_size, num_epochs,
-                                                     img_shape, num_threads, min_after_dequeue)
+        self.images, self.labels, self.image_summary = readFromTFRecords(os.path.join('./dataset/cifar-10-batches-py', filename), batch_size, num_epochs,
+                                                     img_shape, num_threads, min_after_dequeue,augment=train
+                                                                         )
 
         # done

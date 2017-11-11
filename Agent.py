@@ -36,15 +36,19 @@ class Agent(object):
         # Remove previous weights, bias, inputs, etc..
         #tf.reset_default_graph()
         data_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep , url = args.dataset_url)
-        test_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep,train=False,url = args.dataset_url)
-
+        test_loader = File_loader(batch_size=args.batch_size, num_epochs=args.ep, train=False,url=args.dataset_url)
         model = CNN(args.lr, args.batch_size, data_loader.num_batches)
 
-        model.build(data_loader.images)
-        model.loss(data_loader.labels)
+        logits_tr = model.build(data_loader.images)
+        logits_ev = model.build(test_loader.images,train=False)
 
-        train_op = model.train()
-        model.accuracy(data_loader.labels, model.logits)
+        loss_tr, loss_summary_tr = model.loss(data_loader.labels,logits_tr)
+        loss_ev, loss_summary_ev = model.loss(test_loader.labels,logits_ev,name='test')
+
+        train_op,lr_summary = model.train(loss_tr)
+        #   test_op = model.test(test_loader.images,test_loader.labels)
+        accuracy_tr,accuracy_summary_tr = model.accuracy(data_loader.labels,logits_tr)
+        accuracy_ev,accuracy_summary_ev = model.accuracy(test_loader.labels,logits_ev,name='test')
 
         saver = tf.train.Saver()
         config = tf.ConfigProto()
@@ -56,11 +60,11 @@ class Agent(object):
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-        train_summary = tf.summary.merge([model.accuracy_summary, model.loss_summary])
+        summary_tr = tf.summary.merge([accuracy_summary_tr, loss_summary_tr, data_loader.image_summary,lr_summary])
+        summary_ev = tf.summary.merge([accuracy_summary_ev, loss_summary_ev, test_loader.image_summary  ])
 
         train_writer = tf.summary.FileWriter('./summary/train', sess.graph)
         test_writer = tf.summary.FileWriter('./summary/test')
-
         try:
             ep = 0
             step = 1
@@ -68,16 +72,28 @@ class Agent(object):
                 #run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 #run_metadata = tf.RunMetadata()
 
-                train_summary, loss, accuracy, _ = sess.run([train_summary, model.loss_op, model.accuracy_op, train_op])
+                train_summ, loss, accuracy, _ = sess.run(
+                                    [summary_tr, loss_tr, accuracy_tr,train_op]
+                )
 
                 self.logger.info('epoch: %2d, step: %2d, loss: %.4f accuracy: %.4f' % (ep + 1, step, loss, accuracy))
 
                 if step % data_loader.num_batches == 0:
-                    self.logger.info('epoch: %2d, step: %2d, loss: %.4f, epoch %2d done.' % (ep + 1, step, loss, ep + 1))
+
                     checkpoint_path = os.path.join('./summary/log', 'cifar.ckpt')
                     saver.save(sess, checkpoint_path, global_step=ep + 1)
                     step = 1
-                    train_writer.add_summary(train_summary, ep)
+                    train_writer.add_summary(train_summ, ep)
+
+                    test_summ, loss_eva, accuracy_eva = sess.run(
+                        [summary_ev, loss_ev, accuracy_ev]
+                    )
+
+                    test_writer.add_summary(test_summ,ep)
+                    self.logger.info('-------------- Episode '+str(ep+1)+'--------------')
+                    self.logger.info(
+                        'loss: %.2f,loss test: %.2f,accuracy: %.2f,accuracy test: %.2f' % ( loss, loss_eva,accuracy,accuracy_eva))
+                    self.logger.info('--------------------------------------------------')
                     ep += 1
                 else:
                     step += 1
@@ -90,53 +106,6 @@ class Agent(object):
         sess.close()
         self.logger.info('Done')
 
-
-    def evaluate_model(self,sess, model, global_step, summary_writer, summary_op):
-        """Computes perplexity-per-word over the evaluation dataset.
-        Summaries and perplexity-per-word are written out to the eval directory.
-        Args:
-          sess: Session object.
-          model: Instance of ShowAndTellModel; the model to evaluate.
-          global_step: Integer; global step of the model checkpoint.
-          summary_writer: Instance of FileWriter.
-          summary_op: Op for generating model summaries.
-        """
-        # Log model summaries on a single batch.
-        #summary_str = sess.run(summary_op)
-        #summary_writer.add_summary(summary_str, global_step)
-
-        # Compute perplexity over the entire dataset.
-        num_eval_batches = int(math.ceil(10132 / self.batch_size))
-
-        start_time = time.time()
-        sum_losses = 0.
-        sum_weights = 0.
-        for i in range(0,num_eval_batches):
-            accuracy, summary = sess.run([
-                model.accuracy_op,
-                model.accuracy_summary
-            ])
-            #sum_losses += np.sum(cross_entropy_losses * weights)
-            #sum_weights += np.sum(weights)
-            if not i % 100:
-                tf.logging.info("Computed losses for %d of %d batches.", i + 1,
-                                num_eval_batches)
-        eval_time = time.time() - start_time
-
-        perplexity = math.exp(sum_losses / sum_weights)
-        tf.logging.info("Perplexity = %f (%.2g sec)", perplexity, eval_time)
-
-        # Log perplexity to the FileWriter.
-        summary = tf.Summary()
-        value = summary.value.add()
-        value.simple_value = perplexity
-        value.tag = "Perplexity"
-        summary_writer.add_summary(summary, global_step)
-
-        # Write the Events file to the eval directory.
-        #summary_writer.flush()
-        tf.logging.info("Finished processing evaluation at global step %d.",
-                        global_step)
 
 
     ######################################################################################

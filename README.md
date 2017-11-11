@@ -49,4 +49,4 @@ It needs a CSV file named `run_tcomparison-accuracy.csv` with 3 columns(`step`,`
 
 ## Conclusion
 
-Results are just as expected which means with an accuracy near 40% in training phase comapred to the ~10% obtained with random results. In a previous try, I had a 99% which was caused by missing augmentation of data inside the `shuffle_batch` related to the images and it was suffering of overfitting.
+Results are just as expected which means with an accuracy near 40% in training phase compared to the ~10% obtained with random results. In a previous try, I had a 99% which was caused by missing augmentation of data inside the `shuffle_batch` related to the images and it was suffering of overfitting.

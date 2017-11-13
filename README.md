@@ -1,10 +1,21 @@
 # CIFAR-10 Tensorflow Test
-A test to improve my abilities on Tensorflow
+In this experiment, I will try to master my abilities with Tensorflow on CIFAR-10 dataset. 
+
+## CIFAR-10
+
+The CIFAR-10 dataset consists of 60000 32x32 colour images in 10 classes, with 6000 images per class. There are 50000 training images and 10000 test images. 
+
+The dataset is divided into five training batches and one test batch, each with 10000 images. The test batch contains exactly 1000 randomly-selected images from each class. The training batches contain the remaining images in random order, but some training batches may contain more images from one class than another. Between them, the training batches contain exactly 5000 images from each class.
+
+The classes are completely mutually exclusive. There is no overlap between automobiles and trucks. "Automobile" includes sedans, SUVs, things of that sort. "Truck" includes only big trucks. Neither includes pickup trucks.
+
+Data could be found at [Python CIFAR-10 Data](https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz)
 
 ## Actions
 In this algorithm I had to:
+
   * Import CIFAR-10
-  * Convert dataset to TfRecord
+  * Convert dataset to TFRecord
   * Read TFRecord file
   * Create batch
   * Create a model with 3 Conv Layer and 2 Fully Connected Layers
@@ -26,26 +37,26 @@ To run, please insert this code below:
 
 To see runtime visualization of how training is going, please type this in Terminal
 
-`$ tensorboard -logdir=summary/`
+`$ tensorboard --logdir=summary/`
 
 
 ## Results
 In this section, there are illustrated results obtained after a training session. 
 
 ### Original graphs
-![GitHub Logo](accuracy_train.png)
-![GitHub Logo](accuracy_test.png)
+![Accuracy Train](accuracy_train.png)
+![Accuracy Test](accuracy_test.png)
 
 ### Smoothed graphs
-![GitHub Logo](accuracy_train_smooth.png)
-![GitHub Logo](accuracy_test_smooth.png)
+![Accuracy Train Smooth](accuracy_train_smooth.png)
+![Accuracy Test Smooth](accuracy_test_smooth.png)
 
 
 ### Comparison
 The comparison between data has been produced using:
 `$ python3 plot_comparison.py`
 It needs a CSV file named `run_tcomparison-accuracy.csv` with 3 columns(`step`,`test`,`train`)
-![GitHub Logo](Comparison.png)  
+![Comparison](Comparison.png)  
 
 ## Conclusion
 
